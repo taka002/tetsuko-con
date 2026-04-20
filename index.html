@@ -127,13 +127,55 @@ function updateProfile(target,data){
  saveProfiles(p);
 }
 
-// NG追加
+// NG蓄積
 function addNG(target,text){
  let p=getProfiles();
  if(!p[target]) p[target]={ng:[]};
  if(!p[target].ng) p[target].ng=[];
  p[target].ng.push(text);
  p[target].ng=p[target].ng.slice(-10);
+ saveProfiles(p);
+}
+
+// 🔥 長期記憶
+function getMemory(){
+ return JSON.parse(localStorage.getItem("memory")||"{}");
+}
+function saveMemory(m){
+ localStorage.setItem("memory",JSON.stringify(m));
+}
+
+// 要約
+async function updateMemory(){
+ let logs = getLogs().slice(-20).map(l=>l.text).join("\n");
+
+ let summary = await callAI(`
+以下を要約
+${logs}
+
+・よくある悩み
+・悪化パターン
+・改善ヒント
+`);
+
+ let m=getMemory();
+ m.summary=summary;
+ m.updated=Date.now();
+ saveMemory(m);
+}
+
+// トリガー分析
+async function updateTrigger(target){
+ let logs = getLogs().map(l=>l.text).join("\n");
+
+ let trigger = await callAI(`
+この相手で悪化しやすいポイント
+${logs}
+`);
+
+ let p=getProfiles();
+ if(!p[target]) p[target]={};
+ p[target].trigger=trigger;
  saveProfiles(p);
 }
 
@@ -148,7 +190,7 @@ function analyzeRisk(text){
  if(text.length>120) r.push("長すぎる");
  if(text.includes("なんで")) r.push("責め口調");
  if(text.includes("絶対")||text.includes("普通")) r.push("決めつけ");
- if(text.includes("もういい")) r.push("関係悪化ワード");
+ if(text.includes("もういい")) r.push("関係悪化");
  if(text.includes("無理")) r.push("拒絶強め");
  return r;
 }
@@ -162,19 +204,21 @@ function riskScore(text){
  return s;
 }
 
-// 相手モード（記憶込み）
+// 相手モード
 function targetMode(){
  let t=document.getElementById("target").value;
  let p=getProfiles()[t]||{};
 
  let base="";
  if(t==="父") base="父：否定NG・短文";
- if(t==="母") base="母：共感優先";
- if(t==="配偶者") base="配偶者：責めNG";
- if(t==="子ども") base="子ども：やさしく";
+ if(t==="母") base="母：共感";
+ if(t==="配偶者") base="責めNG";
+ if(t==="子ども") base="やさしく";
 
  let ng=p.ng ? "NG:"+p.ng.join(" / ") : "";
- return base+"\n"+ng;
+ let trigger=p.trigger ? "トリガー:"+p.trigger : "";
+
+ return base+"\n"+ng+"\n"+trigger;
 }
 
 // AI
@@ -190,7 +234,7 @@ async function callAI(prompt){
   body:JSON.stringify({
    model:"gpt-4o-mini",
    messages:[
-    {role:"system",content:"家族関係悪化防止AI。安全第一"},
+    {role:"system",content:"家族関係悪化防止AI。現実的で優しい"},
     {role:"user",content:prompt}
    ]
   })
@@ -226,7 +270,7 @@ async function check(){
 
  if(risks.length>0){
   addNG(target,text);
-  result.innerHTML="⚠ 修正<br>"+risks.slice(0,3).join("<br>");
+  result.innerHTML="⚠ 修正<br>"+risks.join("<br>");
   return;
  }
 
@@ -250,22 +294,52 @@ async function reply(){
  }
 
  let res=await callAI(`
-返信3案:
-・やさしい
-・距離
-・事務
+返信3案
 ${context(text)}
 `);
 
  result.textContent=res;
 
  updateProfile(target,{lastSuccess:text});
+ updateTrigger(target);
 }
 
-// 伴走
+// 🔥 伴走（超長期）
 async function coach(){
- let res=await callAI("長期伴走:"+getLogs().map(l=>l.text).join("\n"));
+
+ let logs=getLogs();
+ let memory=getMemory();
+ let profiles=getProfiles();
+
+ let recent=logs.slice(-5).map(l=>l.text).join("\n");
+ let summary=memory.summary||"未分析";
+
+ let profileText=Object.entries(profiles)
+  .map(([k,v])=>`${k}\nNG:${(v.ng||[]).join("/")}\nトリガー:${v.trigger||""}`)
+  .join("\n");
+
+ let res=await callAI(`
+長期伴走AI
+
+最近:
+${recent}
+
+長期:
+${summary}
+
+相手:
+${profileText}
+
+①状態
+②注意
+③行動（LINE以外含む）
+④送るべきか
+⑤一言
+`);
+
  coachResult.textContent=res;
+
+ updateMemory();
 }
 
 // 日記
