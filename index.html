@@ -23,11 +23,34 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 
 <body>
 
-<!-- 🔥 ホーム -->
+<!-- 🔥 ホーム（固定エリア） -->
 <div id="home" class="screen" style="display:block">
+
+<div id="tetukoArea">
+
 <div class="card" style="text-align:center">
 <h2>徹子AI</h2>
 <div style="opacity:0.7">あなたのペースで大丈夫</div>
+</div>
+
+<div class="card">
+今日の状態
+<div id="todayState">未チェック</div>
+</div>
+
+<div class="card">
+<button onclick="quickTalk('つらい')">😢</button>
+<button onclick="quickTalk('イライラ')">😡</button>
+<button onclick="quickTalk('疲れた')">😴</button>
+<button onclick="quickTalk('大丈夫')">😊</button>
+</div>
+
+<div class="card">
+<div id="tetukoChat"></div>
+<textarea id="tetukoInput" placeholder="徹子に話す"></textarea>
+<button onclick="talkTetuko()">話す</button>
+</div>
+
 </div>
 
 <div class="card">
@@ -35,6 +58,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 <button onclick="go('coach')">伴走へ</button>
 <button onclick="go('diary')">日記へ</button>
 </div>
+
 </div>
 
 <!-- 🔥 相談 -->
@@ -46,7 +70,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 </select>
 
 <input type="file" accept="image/*" onchange="loadImage(event)">
-<textarea id="input"></textarea>
+<textarea id="input" placeholder="出来事・LINE"></textarea>
 
 <button onclick="analyze()">整理</button>
 <button onclick="check()">チェック</button>
@@ -135,7 +159,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 <script>
 let API_KEY="";let chart;
 
-// 画面
+// 画面切替
 function go(id){
  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
  document.getElementById(id).style.display="block";
@@ -147,7 +171,7 @@ function saveKey(){
  localStorage.setItem("apiKey",API_KEY);
 }
 
-// ログ
+// ログ管理
 function getLogs(){return JSON.parse(localStorage.getItem("logs")||"[]");}
 function saveLog(type,text,mood=null){
  let logs=getLogs();
@@ -162,6 +186,41 @@ function saveLog(type,text,mood=null){
 async function loadImage(e){
  let r=await Tesseract.recognize(e.target.files[0],'jpn+eng');
  input.value=r.data.text;
+}
+
+// 徹子AI
+function quickTalk(t){tetukoInput.value=t;talkTetuko();}
+
+function updateState(t){
+ if(t.includes("つらい")) todayState.textContent="しんどい";
+ else if(t.includes("イライラ")) todayState.textContent="ストレス高";
+ else todayState.textContent="安定";
+}
+
+function isDanger(t){
+ return ["死","消えたい","もう無理","限界"].some(w=>t.includes(w));
+}
+
+async function talkTetuko(){
+ let t=tetukoInput.value;
+ if(!t)return;
+
+ updateState(t);
+
+ if(isDanger(t)){
+  tetukoChat.innerHTML+=`
+  <div>🧑 ${t}</div>
+  <div style="color:#ff8080">👵 今は無理しなくていいのよ。休みましょう。</div>`;
+  return;
+ }
+
+ let res=await callAI("優しく短く:"+t);
+
+ tetukoChat.innerHTML+=`
+ <div>🧑 ${t}</div>
+ <div>👵 ${res}</div>`;
+
+ tetukoInput.value="";
 }
 
 // スコア
@@ -205,21 +264,20 @@ async function analyze(){
  saveLog("相談",t);
 }
 
-// チェック＋未来
+// チェック
 async function check(){
  let t=input.value;
  let s=calcScore(t);
  showScore(s);
 
  if(s>=60){
-  warn.innerHTML="<div class='warn'>⚠ 今は送らないで。伴走へ</div>";
+  warn.innerHTML="<div class='warn'>⚠ 今は送らない方がいい</div>";
   replyBtn.disabled=true;
   return;
  }
 
- let pred=await callAI("相手の反応予測:"+t);
+ let pred=await callAI("相手の反応:"+t);
  prediction.textContent=pred;
-
  replyBtn.disabled=false;
 }
 
@@ -233,34 +291,15 @@ async function reply(){
 // 伴走
 async function coach(mode){
  let logs=getLogs().map(l=>l.text).join("\n");
- let res=await callAI(`
-長期伴走
-${logs}
-
-目的:${mode}
-
-①状態
-②やること
-③NG
-④一歩
-`);
+ let res=await callAI(`長期伴走\n${logs}\n目的:${mode}`);
  coachResult.textContent=res;
 }
 
-// 🔥 未来予測
+// 未来予測
 async function future(){
  let logs=getLogs().map(l=>l.text).join("\n");
- let res=await callAI(`
-未来予測
-${logs}
-
-①悪化ルート
-②回復ルート
-③分岐
-④今やること
-⑤NG
-`);
- futureResult.innerHTML=res;
+ let res=await callAI(`未来予測\n${logs}`);
+ futureResult.textContent=res;
 }
 
 // 日記
@@ -286,13 +325,7 @@ async function review(type){
  let logs=getLogs().filter(l=>l.mood!==null && now-l.date<range[type]);
  let text=logs.map(l=>l.text).join("\n");
  if(!text){reviewResult.textContent="なし";return;}
- let res=await callAI(`
-振り返り
-${text}
-・要約
-・気持ち
-・考え方
-・アドバイス`);
+ let res=await callAI(`振り返り\n${text}`);
  reviewResult.textContent=res;
 }
 
