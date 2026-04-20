@@ -21,7 +21,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 
 <body>
 
-<!-- 🔥 トップ（徹子） -->
+<!-- 🔥 ホーム（徹子） -->
 <div id="home" class="screen" style="display:block">
 
 <div class="card" style="text-align:center">
@@ -46,39 +46,38 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 
 <div class="card">
 <div id="tetukoChat"></div>
-<textarea id="tetukoInput"></textarea>
+<textarea id="tetukoInput" placeholder="少しだけ話す"></textarea>
 <button onclick="talkTetuko()">話す</button>
 </div>
 
 <div class="card">
-<button style="width:100%" onclick="go('consult')">しっかり相談</button>
+<button style="width:100%" onclick="go('consult')">しっかり相談する</button>
 </div>
 
 </div>
 
-<!-- 相談 -->
+<!-- 🔥 相談 -->
 <div id="consult" class="screen">
 <div class="card">
 
 <select id="target">
-<option>父</option><option>母</option><option>配偶者</option>
-<option>子ども</option>
+<option>父</option><option>母</option><option>配偶者</option><option>子ども</option>
 </select>
 
-<textarea id="input"></textarea>
+<textarea id="input" placeholder="出来事・LINE"></textarea>
 
 <button onclick="analyze()">整理</button>
 <button onclick="check()">チェック</button>
 <button id="replyBtn" onclick="reply()">返信</button>
 
-<div id="scoreBox">
-悪化スコア:<span id="scoreValue">-</span>
+<div class="card">
+悪化スコア：<span id="scoreValue">-</span>
 <div style="height:10px;background:#333">
 <div id="scoreBar" style="height:10px;width:0%"></div>
 </div>
 </div>
 
-<div id="prediction"></div>
+<div id="prediction" class="card"></div>
 
 <div id="warn"></div>
 <div id="result"></div>
@@ -86,7 +85,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 </div>
 
-<!-- 伴走 -->
+<!-- 🔥 伴走 -->
 <div id="coach" class="screen">
 <div class="card">
 <button onclick="coach()">伴走AI</button>
@@ -94,7 +93,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 </div>
 
-<!-- 日記 -->
+<!-- 🔥 日記 -->
 <div id="diary" class="screen">
 <div class="card">
 <select id="mood">
@@ -108,14 +107,16 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 <canvas id="chart"></canvas>
 </div>
 
-<!-- 設定 -->
+<!-- 🔥 設定 -->
 <div id="settings" class="screen">
 <div class="card">
+APIキー
 <input id="key" type="password">
 <button onclick="saveKey()">保存</button>
 </div>
 </div>
 
+<!-- タブ -->
 <div class="tabbar">
 <button onclick="go('home')">ホーム</button>
 <button onclick="go('consult')">相談</button>
@@ -125,7 +126,8 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 
 <script>
-let API_KEY="";let chart;
+let API_KEY="";
+let chart;
 
 // 画面
 function go(id){
@@ -134,16 +136,76 @@ function go(id){
 }
 
 // API
-function saveKey(){API_KEY=key.value;localStorage.setItem("apiKey",API_KEY);}
+function saveKey(){
+ API_KEY=key.value;
+ localStorage.setItem("apiKey",API_KEY);
+}
 
 // ログ
 function getLogs(){return JSON.parse(localStorage.getItem("logs")||"[]");}
 function saveLog(type,text,mood=null){
- let l=getLogs();l.push({type,text,mood,date:Date.now()});
- localStorage.setItem("logs",JSON.stringify(l));drawChart();
+ let logs=getLogs();
+ logs.push({type,text,mood,date:Date.now()});
+ localStorage.setItem("logs",JSON.stringify(logs));
+ drawChart();
 }
 
-// スコア
+// 🔥 状態判定
+function detectState(t){
+ if(t.includes("死")||t.includes("消えたい")) return "crisis";
+ if(t.includes("イライラ")||t.includes("ムカつく")) return "anger";
+ if(t.includes("つらい")||t.includes("しんどい")||t.includes("疲れ")) return "low";
+ return "normal";
+}
+
+// 状態表示
+function updateState(t){
+ let s=detectState(t);
+ todayState.textContent=
+  s==="crisis"?"危険状態":
+  s==="anger"?"ストレス高":
+  s==="low"?"しんどい":"安定";
+}
+
+// 🔥 徹子
+function quickTalk(t){tetukoInput.value=t;talkTetuko();}
+
+async function talkTetuko(){
+
+ let t=tetukoInput.value;
+ if(!t)return;
+
+ updateState(t);
+
+ let state=detectState(t);
+ let prompt="";
+
+ if(state==="crisis"){
+  prompt="今は何もしないで休むよう優しく止める";
+ }else if(state==="anger"){
+  prompt="今は送らない方がいいと優しく伝える";
+ }else if(state==="low"){
+  prompt="やさしく受け止める";
+ }else{
+  prompt="軽く整理して必要なら相談すすめる";
+ }
+
+ let res=await callAI("徹子AI:"+prompt+"\n"+t);
+
+ tetukoChat.innerHTML+=`
+ <div>🧑 ${t}</div>
+ <div>👵 ${res}</div>
+ `;
+
+ if(state!=="low"){
+  tetukoChat.innerHTML+=`
+  <div style="opacity:0.6">→ 整理したいなら相談も使えるわよ</div>`;
+ }
+
+ tetukoInput.value="";
+}
+
+// 🔥 スコア
 function calcScore(t){
  let s=0;
  if(t.includes("なんで"))s+=30;
@@ -174,30 +236,30 @@ async function callAI(p){
  if(!API_KEY)return "APIキー未入力";
  let r=await fetch("https://api.openai.com/v1/chat/completions",{
   method:"POST",
-  headers:{"Content-Type":"application/json","Authorization":"Bearer "+API_KEY},
-  body:JSON.stringify({model:"gpt-4o-mini",messages:[{role:"user",content:p}]})
+  headers:{
+   "Content-Type":"application/json",
+   "Authorization":"Bearer "+API_KEY
+  },
+  body:JSON.stringify({
+   model:"gpt-4o-mini",
+   messages:[{role:"user",content:p}]
+  })
  });
  let d=await r.json();
  return d.choices?.[0]?.message?.content||"エラー";
 }
 
-// 徹子
-function quickTalk(t){tetukoInput.value=t;talkTetuko();}
-function updateState(t){
- todayState.textContent=t.includes("つらい")?"しんどい":t.includes("イライラ")?"ストレス高め":"安定";
-}
-async function talkTetuko(){
- let t=tetukoInput.value;if(!t)return;
- updateState(t);
- let res=await callAI("優しく短く返答:"+t);
- tetukoChat.innerHTML+=`<div>🧑${t}</div><div>🤖${res}</div>`;
- tetukoInput.value="";
-}
-
 // 予測
 async function predict(t){
- let r=await callAI("相手の反応:"+t);
- prediction.textContent=r;
+ let res=await callAI("相手の反応予測:"+t);
+ prediction.textContent=res;
+}
+
+// 整理
+async function analyze(){
+ let t=input.value;
+ let res=await callAI("感情整理:"+t);
+ result.textContent=res;
 }
 
 // チェック
@@ -206,22 +268,27 @@ async function check(){
  let s=calcScore(t);
  showScore(s);
  await predict(t);
- if(s>=60){lockSend("危険：送らない");return;}
+
+ if(s>=60){
+  lockSend("⚠ 今は送らない方がいい");
+  return;
+ }
  unlockSend();
+ result.innerHTML="<div class='safe'>OK</div>";
 }
 
 // 返信
 async function reply(){
  let t=input.value;
- let res=await callAI("返信:"+t);
+ let res=await callAI("返信文:"+t);
  result.textContent=res;
 }
 
 // 伴走
 async function coach(){
  let logs=getLogs().map(l=>l.text).join("\n");
- let r=await callAI("長期伴走:"+logs);
- coachResult.textContent=r;
+ let res=await callAI("長期伴走:"+logs);
+ coachResult.textContent=res;
 }
 
 // 日記
@@ -236,8 +303,10 @@ function drawChart(){
  if(chart)chart.destroy();
  chart=new Chart(document.getElementById("chart"),{
   type:"line",
-  data:{labels:logs.map(l=>new Date(l.date).toLocaleDateString()),
-  datasets:[{data:logs.map(l=>l.mood)}]}
+  data:{
+   labels:logs.map(l=>new Date(l.date).toLocaleDateString()),
+   datasets:[{data:logs.map(l=>l.mood)}]
+  }
  });
 }
 
