@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>徹子AI</title>
+<title>徹子AI 完全版</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
@@ -15,7 +15,7 @@ body{margin:0;background:#111;color:#fff;font-family:sans-serif;}
 .screen{display:none;padding:10px;padding-bottom:70px;}
 .card{background:#222;padding:12px;border-radius:10px;margin:8px 0;}
 textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px;}
-#input{height:160px;} /* 🔥 相談欄拡大 */
+#input{height:160px;}
 .warn{background:#b71c1c;padding:10px;border-radius:10px;margin-top:10px;}
 .safe{background:#1b5e20;padding:10px;border-radius:10px;margin-top:10px;}
 </style>
@@ -25,7 +25,6 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 
 <!-- 🔥 ホーム -->
 <div id="home" class="screen" style="display:block">
-
 <div class="card" style="text-align:center">
 <h2>徹子AI</h2>
 <div style="opacity:0.7">あなたのペースで大丈夫</div>
@@ -37,59 +36,49 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 </div>
 
 <div class="card">
-今の気分
-<div style="display:flex;gap:10px">
 <button onclick="quickTalk('つらい')">😢</button>
 <button onclick="quickTalk('イライラ')">😡</button>
 <button onclick="quickTalk('疲れた')">😴</button>
 <button onclick="quickTalk('大丈夫')">😊</button>
 </div>
-</div>
 
 <div class="card">
 <div id="tetukoChat"></div>
-<textarea id="tetukoInput" placeholder="少しだけ話す"></textarea>
+<textarea id="tetukoInput"></textarea>
 <button onclick="talkTetuko()">話す</button>
 </div>
 
 <div class="card">
-<button style="width:100%" onclick="go('consult')">しっかり相談する</button>
+<button onclick="go('consult')">相談へ</button>
 </div>
-
 </div>
 
 <!-- 🔥 相談 -->
 <div id="consult" class="screen">
 <div class="card">
-
 <select id="target">
 <option>父</option><option>母</option><option>配偶者</option><option>子ども</option>
 </select>
 
-<!-- 🔥 OCR -->
 <input type="file" accept="image/*" onchange="loadImage(event)">
-
-<textarea id="input" placeholder="出来事・LINE"></textarea>
+<textarea id="input"></textarea>
 
 <button onclick="analyze()">整理</button>
 <button onclick="check()">チェック</button>
 <button id="replyBtn" onclick="reply()">返信</button>
 
-<div class="card">
-悪化スコア：<span id="scoreValue">-</span>
+<div>悪化スコア:<span id="scoreValue">-</span></div>
 <div style="height:10px;background:#333">
 <div id="scoreBar" style="height:10px;width:0%"></div>
 </div>
-</div>
 
-<div id="prediction" class="card"></div>
+<div id="prediction"></div>
 <div id="warn"></div>
 <div id="result"></div>
-
 </div>
 </div>
 
-<!-- 伴走 -->
+<!-- 🔥 伴走 -->
 <div id="coach" class="screen">
 <div class="card">
 <button onclick="coach()">伴走AI</button>
@@ -97,7 +86,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 </div>
 </div>
 
-<!-- 日記 -->
+<!-- 🔥 日記 -->
 <div id="diary" class="screen">
 <div class="card">
 <select id="mood">
@@ -108,19 +97,27 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 <textarea id="diaryText"></textarea>
 <button onclick="saveDiary()">保存</button>
 </div>
+
+<div class="card">
+<button onclick="review('day')">日</button>
+<button onclick="review('week')">週</button>
+<button onclick="review('month')">月</button>
+<button onclick="review('year')">年</button>
+</div>
+
+<div id="reviewResult" class="card"></div>
+
 <canvas id="chart"></canvas>
 </div>
 
-<!-- 設定 -->
+<!-- 🔥 設定 -->
 <div id="settings" class="screen">
 <div class="card">
-APIキー
 <input id="key" type="password">
 <button onclick="saveKey()">保存</button>
 </div>
 </div>
 
-<!-- タブ -->
 <div class="tabbar">
 <button onclick="go('home')">ホーム</button>
 <button onclick="go('consult')">相談</button>
@@ -130,8 +127,7 @@ APIキー
 </div>
 
 <script>
-let API_KEY="";
-let chart;
+let API_KEY="";let chart;
 
 // 画面
 function go(id){
@@ -145,38 +141,36 @@ function saveKey(){
  localStorage.setItem("apiKey",API_KEY);
 }
 
-// ログ
+// 🔥 ログ＆長期記憶
 function getLogs(){return JSON.parse(localStorage.getItem("logs")||"[]");}
 function saveLog(type,text,mood=null){
  let logs=getLogs();
  logs.push({type,text,mood,date:Date.now()});
+ logs=logs.slice(-50);
  localStorage.setItem("logs",JSON.stringify(logs));
  drawChart();
 }
 
 // OCR
 async function loadImage(e){
- let file = e.target.files[0];
- let result = await Tesseract.recognize(file,'jpn+eng');
- input.value = result.data.text;
+ let file=e.target.files[0];
+ let r=await Tesseract.recognize(file,'jpn+eng');
+ input.value=r.data.text;
 }
 
 // 状態
 function detectState(t){
- if(t.includes("死")||t.includes("消えたい")) return "crisis";
- if(t.includes("イライラ")) return "anger";
- if(t.includes("つらい")||t.includes("疲れ")) return "low";
- return "normal";
+ if(t.includes("死")||t.includes("消えたい"))return"crisis";
+ if(t.includes("イライラ"))return"anger";
+ if(t.includes("つらい")||t.includes("疲れ"))return"low";
+ return"normal";
 }
-function updateState(t){
- todayState.textContent = detectState(t);
-}
+function updateState(t){todayState.textContent=detectState(t);}
 
 // 徹子
 function quickTalk(t){tetukoInput.value=t;talkTetuko();}
 async function talkTetuko(){
- let t=tetukoInput.value;
- if(!t)return;
+ let t=tetukoInput.value;if(!t)return;
  updateState(t);
  let res=await callAI("優しく短く:"+t);
  tetukoChat.innerHTML+=`<div>🧑${t}</div><div>👵${res}</div>`;
@@ -198,19 +192,9 @@ function showScore(s){
  scoreBar.style.background=s<30?"lime":s<60?"orange":"red";
 }
 
-// ロック
-function lockSend(msg){
- replyBtn.disabled=true;
- warn.innerHTML="<div class='warn'>"+msg+"</div>";
-}
-function unlockSend(){
- replyBtn.disabled=false;
- warn.innerHTML="";
-}
-
 // AI
 async function callAI(p){
- if(!API_KEY)return "APIキー未入力";
+ if(!API_KEY)return"APIキー未入力";
  let r=await fetch("https://api.openai.com/v1/chat/completions",{
   method:"POST",
   headers:{
@@ -226,17 +210,10 @@ async function callAI(p){
  return d.choices?.[0]?.message?.content||"エラー";
 }
 
-// 整理（強化）
+// 相談
 async function analyze(){
  let t=input.value;
- if(!t){result.textContent="入力してください";return;}
- let res=await callAI(`
-感情整理
-・感情
-・原因
-・どう考えるか
-${t}
-`);
+ let res=await callAI("感情整理:"+t);
  result.textContent=res;
  saveLog("相談",t);
 }
@@ -246,9 +223,12 @@ async function check(){
  let t=input.value;
  let s=calcScore(t);
  showScore(s);
- if(s>=60){lockSend("⚠ 今は送らない方がいい");return;}
- unlockSend();
- result.innerHTML="<div class='safe'>OK</div>";
+ if(s>=60){
+  warn.innerHTML="<div class='warn'>送信NG</div>";
+  replyBtn.disabled=true;
+  return;
+ }
+ replyBtn.disabled=false;
 }
 
 // 返信
@@ -269,6 +249,30 @@ async function coach(){
 function saveDiary(){
  saveLog("日記",diaryText.value,parseInt(mood.value));
  diaryText.value="";
+ review("day");
+}
+
+// 振り返り
+async function review(type){
+ let now=Date.now();
+ let range={
+  day:86400000,
+  week:86400000*7,
+  month:86400000*30,
+  year:86400000*365
+ };
+ let logs=getLogs().filter(l=>l.mood!==null && now-l.date<range[type]);
+ let text=logs.map(l=>l.text).join("\n");
+ if(!text){reviewResult.textContent="なし";return;}
+ let res=await callAI(`
+振り返り
+${text}
+・要約
+・気持ち
+・考え方
+・アドバイス
+`);
+ reviewResult.textContent=res;
 }
 
 // グラフ
@@ -279,7 +283,17 @@ function drawChart(){
   type:"line",
   data:{
    labels:logs.map(l=>new Date(l.date).toLocaleDateString()),
-   datasets:[{data:logs.map(l=>l.mood)}]
+   datasets:[{
+    data:logs.map(l=>l.mood),
+    segment:{
+     borderColor:ctx=>{
+      let v=ctx.p1.parsed.y;
+      if(v==2)return"lime";
+      if(v==1)return"yellow";
+      return"red";
+     }
+    }
+   }]
   }
  });
 }
