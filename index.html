@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家族関係AI 完全版</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{margin:0;background:#111;color:#fff;font-family:sans-serif;}
+.tabbar{
+ position:fixed;bottom:0;width:100%;
+ display:flex;background:#222;
+}
+.tabbar button{
+ flex:1;padding:12px;border:none;background:#222;color:#fff;
+}
+.active{background:#ff9800;}
+.screen{display:none;padding:10px;padding-bottom:70px;}
+.card{background:#222;padding:12px;border-radius:10px;margin:8px 0;}
+textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
+.warn{background:#b71c1c;padding:10px;border-radius:10px;}
+</style>
+</head>
+
+<body>
+
+<!-- ホーム -->
+<div id="home" class="screen" style="display:block">
+<div class="card">
+<h3>今日なにする？</h3>
+<button onclick="go('consult')">相談を始める</button>
+<button onclick="go('coach')">伴走AI</button>
+<button onclick="go('diary')">日記</button>
+</div>
+
+<div class="card" id="recent"></div>
+</div>
+
+<!-- 相談 -->
+<div id="consult" class="screen">
+<div class="card">
+相手
+<select id="target">
+<option>父</option><option>母</option><option>配偶者</option>
+<option>子ども</option><option>義家族</option>
+</select>
+
+<textarea id="input" placeholder="出来事・LINE"></textarea>
+
+<button onclick="analyze()">整理</button>
+<button onclick="check()">送信前チェック</button>
+<button onclick="reply()">返信生成</button>
+
+<div id="warn"></div>
+<div id="result"></div>
+</div>
+</div>
+
+<!-- 伴走 -->
+<div id="coach" class="screen">
+<div class="card">
+<button onclick="coach()">アドバイス</button>
+<div id="coachResult"></div>
+</div>
+</div>
+
+<!-- 日記 -->
+<div id="diary" class="screen">
+<div class="card">
+<select id="mood">
+<option value="2">😊</option>
+<option value="1">😐</option>
+<option value="0">😢</option>
+</select>
+
+<textarea id="diaryText"></textarea>
+<button onclick="saveDiary()">保存</button>
+</div>
+
+<canvas id="chart"></canvas>
+</div>
+
+<!-- 設定 -->
+<div id="settings" class="screen">
+<div class="card">
+APIキー
+<input id="key" type="password">
+<button onclick="saveKey()">保存</button>
+</div>
+</div>
+
+<!-- タブ -->
+<div class="tabbar">
+<button onclick="go('home')">ホーム</button>
+<button onclick="go('consult')">相談</button>
+<button onclick="go('coach')">伴走</button>
+<button onclick="go('diary')">日記</button>
+<button onclick="go('settings')">設定</button>
+</div>
+
+<script>
+let API_KEY="";
+let chart;
+
+// 画面切替
+function go(id){
+ document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
+ document.getElementById(id).style.display="block";
+}
+
+// API
+function saveKey(){
+ API_KEY=document.getElementById("key").value;
+ localStorage.setItem("apiKey",API_KEY);
+}
+
+// ログ
+function getLogs(){
+ return JSON.parse(localStorage.getItem("logs")||"[]");
+}
+
+function saveLog(type,text,mood=null){
+ let logs=getLogs();
+ logs.push({type,text,mood,date:Date.now()});
+ localStorage.setItem("logs",JSON.stringify(logs));
+ drawChart();
+}
+
+// 危険検知（強化）
+function danger(text){
+ return ["死","消えたい","暴力","殴","怖い"].some(w=>text.includes(w));
+}
+
+// 相手モード
+function targetMode(){
+ let t=document.getElementById("target").value;
+ return `相手:${t} 配慮して返信`;
+}
+
+// AI
+async function callAI(prompt){
+ if(!API_KEY)return "APIキー未入力";
+
+ let res=await fetch("https://api.openai.com/v1/chat/completions",{
+  method:"POST",
+  headers:{
+   "Content-Type":"application/json",
+   "Authorization":"Bearer "+API_KEY
+  },
+  body:JSON.stringify({
+   model:"gpt-4o-mini",
+   messages:[
+    {role:"system",content:"家族関係悪化防止AI。安全第一"},
+    {role:"user",content:prompt}
+   ]
+  })
+ });
+
+ let d=await res.json();
+ return d.choices?.[0]?.message?.content || "エラー";
+}
+
+// 文脈
+function context(text){
+ let logs=getLogs().slice(-5).map(l=>l.text).join("\n");
+ return `${targetMode()}\n過去:${logs}\n今回:${text}`;
+}
+
+// 整理
+async function analyze(){
+ let text=input.value;
+
+ if(danger(text)){
+  warn.innerHTML="<div class='warn'>⚠ 今は送らない方が安全</div>";
+  return;
+ }
+
+ let res=await callAI("感情整理:"+context(text));
+ result.textContent=res;
+ saveLog("相談",text);
+}
+
+// チェック
+async function check(){
+ let text=input.value;
+ let res=await callAI("送信リスクチェック:"+context(text));
+ result.textContent=res;
+}
+
+// 返信
+async function reply(){
+ let text=input.value;
+
+ if(danger(text)){
+  warn.innerHTML="<div class='warn'>⚠ 返信より休息優先</div>";
+  return;
+ }
+
+ let res=await callAI("返信3案:"+context(text));
+ result.textContent=res;
+}
+
+// 伴走
+async function coach(){
+ let res=await callAI("長期伴走アドバイス:"+getLogs().map(l=>l.text).join("\n"));
+ coachResult.textContent=res;
+}
+
+// 日記
+function saveDiary(){
+ let text=diaryText.value;
+ let mood=parseInt(mood.value);
+
+ saveLog("日記",text,mood);
+ diaryText.value="";
+}
+
+// グラフ
+function drawChart(){
+ let logs=getLogs().filter(l=>l.mood!==null);
+
+ if(chart)chart.destroy();
+
+ chart=new Chart(chartCanvas,{
+  type:"line",
+  data:{
+   labels:logs.map(l=>new Date(l.date).toLocaleDateString()),
+   datasets:[{data:logs.map(l=>l.mood)}]
+  }
+ });
+}
+
+// 初期
+window.onload=function(){
+ API_KEY=localStorage.getItem("apiKey")||"";
+ key.value=API_KEY;
+ drawChart();
+}
+</script>
+
+</body>
+</html>
