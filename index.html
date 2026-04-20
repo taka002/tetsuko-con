@@ -31,31 +31,16 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 </div>
 
 <div class="card">
-今日の状態
-<div id="todayState">未チェック</div>
-</div>
-
-<div class="card">
-<button onclick="quickTalk('つらい')">😢</button>
-<button onclick="quickTalk('イライラ')">😡</button>
-<button onclick="quickTalk('疲れた')">😴</button>
-<button onclick="quickTalk('大丈夫')">😊</button>
-</div>
-
-<div class="card">
-<div id="tetukoChat"></div>
-<textarea id="tetukoInput"></textarea>
-<button onclick="talkTetuko()">話す</button>
-</div>
-
-<div class="card">
 <button onclick="go('consult')">相談へ</button>
+<button onclick="go('coach')">伴走へ</button>
+<button onclick="go('diary')">日記へ</button>
 </div>
 </div>
 
 <!-- 🔥 相談 -->
 <div id="consult" class="screen">
 <div class="card">
+
 <select id="target">
 <option>父</option><option>母</option><option>配偶者</option><option>子ども</option>
 </select>
@@ -75,25 +60,43 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 <div id="prediction"></div>
 <div id="warn"></div>
 <div id="result"></div>
+
 </div>
 </div>
 
 <!-- 🔥 伴走 -->
 <div id="coach" class="screen">
+
 <div class="card">
-<button onclick="coach()">伴走AI</button>
+<h3>今どうする？</h3>
+<button onclick="coach('整理')">気持ち整理</button>
+<button onclick="coach('送るべきか')">送るべき？</button>
+<button onclick="coach('距離')">距離を取る</button>
+<button onclick="coach('行動')">行動したい</button>
+</div>
+
+<div class="card">
+<h3>未来予測</h3>
+<button onclick="future()">このままだと？</button>
+<div id="futureResult"></div>
+</div>
+
+<div class="card">
 <div id="coachResult"></div>
 </div>
+
 </div>
 
 <!-- 🔥 日記 -->
 <div id="diary" class="screen">
+
 <div class="card">
 <select id="mood">
 <option value="2">😊</option>
 <option value="1">😐</option>
 <option value="0">😢</option>
 </select>
+
 <textarea id="diaryText"></textarea>
 <button onclick="saveDiary()">保存</button>
 </div>
@@ -107,7 +110,10 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px
 
 <div id="reviewResult" class="card"></div>
 
+<div id="diaryList"></div>
+
 <canvas id="chart"></canvas>
+
 </div>
 
 <!-- 🔥 設定 -->
@@ -141,7 +147,7 @@ function saveKey(){
  localStorage.setItem("apiKey",API_KEY);
 }
 
-// 🔥 ログ＆長期記憶
+// ログ
 function getLogs(){return JSON.parse(localStorage.getItem("logs")||"[]");}
 function saveLog(type,text,mood=null){
  let logs=getLogs();
@@ -149,32 +155,13 @@ function saveLog(type,text,mood=null){
  logs=logs.slice(-50);
  localStorage.setItem("logs",JSON.stringify(logs));
  drawChart();
+ renderDiary();
 }
 
 // OCR
 async function loadImage(e){
- let file=e.target.files[0];
- let r=await Tesseract.recognize(file,'jpn+eng');
+ let r=await Tesseract.recognize(e.target.files[0],'jpn+eng');
  input.value=r.data.text;
-}
-
-// 状態
-function detectState(t){
- if(t.includes("死")||t.includes("消えたい"))return"crisis";
- if(t.includes("イライラ"))return"anger";
- if(t.includes("つらい")||t.includes("疲れ"))return"low";
- return"normal";
-}
-function updateState(t){todayState.textContent=detectState(t);}
-
-// 徹子
-function quickTalk(t){tetukoInput.value=t;talkTetuko();}
-async function talkTetuko(){
- let t=tetukoInput.value;if(!t)return;
- updateState(t);
- let res=await callAI("優しく短く:"+t);
- tetukoChat.innerHTML+=`<div>🧑${t}</div><div>👵${res}</div>`;
- tetukoInput.value="";
 }
 
 // スコア
@@ -218,31 +205,62 @@ async function analyze(){
  saveLog("相談",t);
 }
 
-// チェック
+// チェック＋未来
 async function check(){
  let t=input.value;
  let s=calcScore(t);
  showScore(s);
+
  if(s>=60){
-  warn.innerHTML="<div class='warn'>送信NG</div>";
+  warn.innerHTML="<div class='warn'>⚠ 今は送らないで。伴走へ</div>";
   replyBtn.disabled=true;
   return;
  }
+
+ let pred=await callAI("相手の反応予測:"+t);
+ prediction.textContent=pred;
+
  replyBtn.disabled=false;
 }
 
 // 返信
 async function reply(){
  let t=input.value;
- let res=await callAI("返信:"+t);
+ let res=await callAI("返信3案:"+t);
  result.textContent=res;
 }
 
 // 伴走
-async function coach(){
+async function coach(mode){
  let logs=getLogs().map(l=>l.text).join("\n");
- let res=await callAI("長期伴走:"+logs);
+ let res=await callAI(`
+長期伴走
+${logs}
+
+目的:${mode}
+
+①状態
+②やること
+③NG
+④一歩
+`);
  coachResult.textContent=res;
+}
+
+// 🔥 未来予測
+async function future(){
+ let logs=getLogs().map(l=>l.text).join("\n");
+ let res=await callAI(`
+未来予測
+${logs}
+
+①悪化ルート
+②回復ルート
+③分岐
+④今やること
+⑤NG
+`);
+ futureResult.innerHTML=res;
 }
 
 // 日記
@@ -252,15 +270,19 @@ function saveDiary(){
  review("day");
 }
 
+// 日記一覧
+function renderDiary(){
+ let logs=getLogs().filter(l=>l.type==="日記");
+ diaryList.innerHTML=logs.reverse().map(l=>`
+ <div class="card">
+ ${new Date(l.date).toLocaleString()}<br>${l.text}
+ </div>`).join("");
+}
+
 // 振り返り
 async function review(type){
  let now=Date.now();
- let range={
-  day:86400000,
-  week:86400000*7,
-  month:86400000*30,
-  year:86400000*365
- };
+ let range={day:86400000,week:86400000*7,month:86400000*30,year:86400000*365};
  let logs=getLogs().filter(l=>l.mood!==null && now-l.date<range[type]);
  let text=logs.map(l=>l.text).join("\n");
  if(!text){reviewResult.textContent="なし";return;}
@@ -270,8 +292,7 @@ ${text}
 ・要約
 ・気持ち
 ・考え方
-・アドバイス
-`);
+・アドバイス`);
  reviewResult.textContent=res;
 }
 
@@ -303,6 +324,7 @@ window.onload=function(){
  API_KEY=localStorage.getItem("apiKey")||"";
  key.value=API_KEY;
  drawChart();
+ renderDiary();
 }
 </script>
 
