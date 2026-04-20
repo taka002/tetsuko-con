@@ -21,7 +21,6 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 
 <body>
 
-<!-- ホーム -->
 <div id="home" class="screen" style="display:block">
 <div class="card">
 <h3>今日なにする？</h3>
@@ -31,7 +30,6 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 </div>
 
-<!-- 相談 -->
 <div id="consult" class="screen">
 <div class="card">
 相手
@@ -51,7 +49,6 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 </div>
 
-<!-- 伴走 -->
 <div id="coach" class="screen">
 <div class="card">
 <button onclick="coach()">アドバイス</button>
@@ -59,7 +56,6 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 </div>
 
-<!-- 日記 -->
 <div id="diary" class="screen">
 <div class="card">
 <select id="mood">
@@ -71,11 +67,9 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 <textarea id="diaryText"></textarea>
 <button onclick="saveDiary()">保存</button>
 </div>
-
 <canvas id="chart"></canvas>
 </div>
 
-<!-- 設定 -->
 <div id="settings" class="screen">
 <div class="card">
 APIキー
@@ -84,7 +78,6 @@ APIキー
 </div>
 </div>
 
-<!-- タブ -->
 <div class="tabbar">
 <button onclick="go('home')">ホーム</button>
 <button onclick="go('consult')">相談</button>
@@ -97,7 +90,7 @@ APIキー
 let API_KEY="";
 let chart;
 
-// 画面切替
+// 画面
 function go(id){
  document.querySelectorAll(".screen").forEach(s=>s.style.display="none");
  document.getElementById(id).style.display="block";
@@ -113,7 +106,6 @@ function saveKey(){
 function getLogs(){
  return JSON.parse(localStorage.getItem("logs")||"[]");
 }
-
 function saveLog(type,text,mood=null){
  let logs=getLogs();
  logs.push({type,text,mood,date:Date.now()});
@@ -121,40 +113,68 @@ function saveLog(type,text,mood=null){
  drawChart();
 }
 
-// 危険検知
+// 🔥 プロファイル
+function getProfiles(){
+ return JSON.parse(localStorage.getItem("profiles")||"{}");
+}
+function saveProfiles(p){
+ localStorage.setItem("profiles",JSON.stringify(p));
+}
+function updateProfile(target,data){
+ let p=getProfiles();
+ if(!p[target]) p[target]={};
+ Object.assign(p[target],data);
+ saveProfiles(p);
+}
+
+// NG追加
+function addNG(target,text){
+ let p=getProfiles();
+ if(!p[target]) p[target]={ng:[]};
+ if(!p[target].ng) p[target].ng=[];
+ p[target].ng.push(text);
+ p[target].ng=p[target].ng.slice(-10);
+ saveProfiles(p);
+}
+
+// 危険
 function danger(text){
  return ["死","消えたい","暴力","殴","怖い"].some(w=>text.includes(w));
 }
 
-// 🔥 リスク分析
+// リスク
 function analyzeRisk(text){
- let risks=[];
- if(text.length>120) risks.push("長すぎる");
- if(text.includes("なんで")) risks.push("責め口調");
- if(text.includes("絶対")||text.includes("普通")) risks.push("決めつけ");
- if(text.includes("もういい")) risks.push("関係悪化ワード");
- if(text.includes("無理")) risks.push("拒絶強め");
- return risks;
+ let r=[];
+ if(text.length>120) r.push("長すぎる");
+ if(text.includes("なんで")) r.push("責め口調");
+ if(text.includes("絶対")||text.includes("普通")) r.push("決めつけ");
+ if(text.includes("もういい")) r.push("関係悪化ワード");
+ if(text.includes("無理")) r.push("拒絶強め");
+ return r;
 }
 
-// 🔥 スコア
+// スコア
 function riskScore(text){
- let score=0;
- if(text.includes("なんで")) score+=2;
- if(text.includes("絶対")) score+=2;
- if(text.length>120) score+=1;
- return score;
+ let s=0;
+ if(text.includes("なんで")) s+=2;
+ if(text.includes("絶対")) s+=2;
+ if(text.length>120) s+=1;
+ return s;
 }
 
-// 相手モード（強化）
+// 相手モード（記憶込み）
 function targetMode(){
  let t=document.getElementById("target").value;
+ let p=getProfiles()[t]||{};
 
- if(t==="父") return "父：プライド高い。否定NG。短文";
- if(t==="母") return "母：共感重視";
- if(t==="配偶者") return "配偶者：責めNG";
- if(t==="子ども") return "子ども：やさしく";
- return "";
+ let base="";
+ if(t==="父") base="父：否定NG・短文";
+ if(t==="母") base="母：共感優先";
+ if(t==="配偶者") base="配偶者：責めNG";
+ if(t==="子ども") base="子ども：やさしく";
+
+ let ng=p.ng ? "NG:"+p.ng.join(" / ") : "";
+ return base+"\n"+ng;
 }
 
 // AI
@@ -189,53 +209,57 @@ function context(text){
 // 整理
 async function analyze(){
  let text=input.value;
-
  if(danger(text)){
   warn.innerHTML="<div class='warn'>⚠ 今は送らない方が安全</div>";
   return;
  }
-
  let res=await callAI("感情整理:"+context(text));
  result.textContent=res;
  saveLog("相談",text);
 }
 
-// 🔥 チェック（強化）
+// チェック
 async function check(){
  let text=input.value;
  let risks=analyzeRisk(text);
+ let target=target.value;
 
  if(risks.length>0){
-  result.innerHTML="⚠ 修正ポイント<br>"+risks.slice(0,3).join("<br>");
+  addNG(target,text);
+  result.innerHTML="⚠ 修正<br>"+risks.slice(0,3).join("<br>");
   return;
  }
 
  result.innerHTML="<div class='safe'>問題なし</div>";
 }
 
-// 🔥 返信（安全制御あり）
+// 返信
 async function reply(){
  let text=input.value;
+ let target=target.value;
 
  if(danger(text)){
-  warn.innerHTML="<div class='warn'>⚠ 返信より休息優先</div>";
+  warn.innerHTML="<div class='warn'>⚠ 休息優先</div>";
   return;
  }
 
  if(riskScore(text)>=3){
-  warn.innerHTML="<div class='warn'>⚠ 今は送信しない方が安全</div>";
+  warn.innerHTML="<div class='warn'>⚠ 送信NG</div>";
+  addNG(target,text);
   return;
  }
 
  let res=await callAI(`
 返信3案:
 ・やさしい
-・距離とる
-・事務的
+・距離
+・事務
 ${context(text)}
 `);
 
  result.textContent=res;
+
+ updateProfile(target,{lastSuccess:text});
 }
 
 // 伴走
@@ -255,9 +279,7 @@ function saveDiary(){
 // グラフ
 function drawChart(){
  let logs=getLogs().filter(l=>l.mood!==null);
-
  if(chart)chart.destroy();
-
  chart=new Chart(document.getElementById("chart"),{
   type:"line",
   data:{
