@@ -6,6 +6,7 @@
 <title>徹子AI</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
 <style>
 body{margin:0;background:#111;color:#fff;font-family:sans-serif;}
@@ -13,7 +14,8 @@ body{margin:0;background:#111;color:#fff;font-family:sans-serif;}
 .tabbar button{flex:1;padding:12px;border:none;background:#222;color:#fff;}
 .screen{display:none;padding:10px;padding-bottom:70px;}
 .card{background:#222;padding:12px;border-radius:10px;margin:8px 0;}
-textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
+textarea,input,select{width:100%;border-radius:8px;margin-top:5px;font-size:16px;}
+#input{height:160px;} /* 🔥 相談欄拡大 */
 .warn{background:#b71c1c;padding:10px;border-radius:10px;margin-top:10px;}
 .safe{background:#1b5e20;padding:10px;border-radius:10px;margin-top:10px;}
 </style>
@@ -21,7 +23,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 
 <body>
 
-<!-- 🔥 ホーム（徹子） -->
+<!-- 🔥 ホーム -->
 <div id="home" class="screen" style="display:block">
 
 <div class="card" style="text-align:center">
@@ -64,6 +66,9 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 <option>父</option><option>母</option><option>配偶者</option><option>子ども</option>
 </select>
 
+<!-- 🔥 OCR -->
+<input type="file" accept="image/*" onchange="loadImage(event)">
+
 <textarea id="input" placeholder="出来事・LINE"></textarea>
 
 <button onclick="analyze()">整理</button>
@@ -78,14 +83,13 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 
 <div id="prediction" class="card"></div>
-
 <div id="warn"></div>
 <div id="result"></div>
 
 </div>
 </div>
 
-<!-- 🔥 伴走 -->
+<!-- 伴走 -->
 <div id="coach" class="screen">
 <div class="card">
 <button onclick="coach()">伴走AI</button>
@@ -93,7 +97,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 </div>
 </div>
 
-<!-- 🔥 日記 -->
+<!-- 日記 -->
 <div id="diary" class="screen">
 <div class="card">
 <select id="mood">
@@ -107,7 +111,7 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 <canvas id="chart"></canvas>
 </div>
 
-<!-- 🔥 設定 -->
+<!-- 設定 -->
 <div id="settings" class="screen">
 <div class="card">
 APIキー
@@ -150,62 +154,36 @@ function saveLog(type,text,mood=null){
  drawChart();
 }
 
-// 🔥 状態判定
+// OCR
+async function loadImage(e){
+ let file = e.target.files[0];
+ let result = await Tesseract.recognize(file,'jpn+eng');
+ input.value = result.data.text;
+}
+
+// 状態
 function detectState(t){
  if(t.includes("死")||t.includes("消えたい")) return "crisis";
- if(t.includes("イライラ")||t.includes("ムカつく")) return "anger";
- if(t.includes("つらい")||t.includes("しんどい")||t.includes("疲れ")) return "low";
+ if(t.includes("イライラ")) return "anger";
+ if(t.includes("つらい")||t.includes("疲れ")) return "low";
  return "normal";
 }
-
-// 状態表示
 function updateState(t){
- let s=detectState(t);
- todayState.textContent=
-  s==="crisis"?"危険状態":
-  s==="anger"?"ストレス高":
-  s==="low"?"しんどい":"安定";
+ todayState.textContent = detectState(t);
 }
 
-// 🔥 徹子
+// 徹子
 function quickTalk(t){tetukoInput.value=t;talkTetuko();}
-
 async function talkTetuko(){
-
  let t=tetukoInput.value;
  if(!t)return;
-
  updateState(t);
-
- let state=detectState(t);
- let prompt="";
-
- if(state==="crisis"){
-  prompt="今は何もしないで休むよう優しく止める";
- }else if(state==="anger"){
-  prompt="今は送らない方がいいと優しく伝える";
- }else if(state==="low"){
-  prompt="やさしく受け止める";
- }else{
-  prompt="軽く整理して必要なら相談すすめる";
- }
-
- let res=await callAI("徹子AI:"+prompt+"\n"+t);
-
- tetukoChat.innerHTML+=`
- <div>🧑 ${t}</div>
- <div>👵 ${res}</div>
- `;
-
- if(state!=="low"){
-  tetukoChat.innerHTML+=`
-  <div style="opacity:0.6">→ 整理したいなら相談も使えるわよ</div>`;
- }
-
+ let res=await callAI("優しく短く:"+t);
+ tetukoChat.innerHTML+=`<div>🧑${t}</div><div>👵${res}</div>`;
  tetukoInput.value="";
 }
 
-// 🔥 スコア
+// スコア
 function calcScore(t){
  let s=0;
  if(t.includes("なんで"))s+=30;
@@ -214,7 +192,6 @@ function calcScore(t){
  if(t.length>120)s+=20;
  return Math.min(s,100);
 }
-
 function showScore(s){
  scoreValue.textContent=s;
  scoreBar.style.width=s+"%";
@@ -249,17 +226,19 @@ async function callAI(p){
  return d.choices?.[0]?.message?.content||"エラー";
 }
 
-// 予測
-async function predict(t){
- let res=await callAI("相手の反応予測:"+t);
- prediction.textContent=res;
-}
-
-// 整理
+// 整理（強化）
 async function analyze(){
  let t=input.value;
- let res=await callAI("感情整理:"+t);
+ if(!t){result.textContent="入力してください";return;}
+ let res=await callAI(`
+感情整理
+・感情
+・原因
+・どう考えるか
+${t}
+`);
  result.textContent=res;
+ saveLog("相談",t);
 }
 
 // チェック
@@ -267,12 +246,7 @@ async function check(){
  let t=input.value;
  let s=calcScore(t);
  showScore(s);
- await predict(t);
-
- if(s>=60){
-  lockSend("⚠ 今は送らない方がいい");
-  return;
- }
+ if(s>=60){lockSend("⚠ 今は送らない方がいい");return;}
  unlockSend();
  result.innerHTML="<div class='safe'>OK</div>";
 }
@@ -280,7 +254,7 @@ async function check(){
 // 返信
 async function reply(){
  let t=input.value;
- let res=await callAI("返信文:"+t);
+ let res=await callAI("返信:"+t);
  result.textContent=res;
 }
 
