@@ -9,18 +9,13 @@
 
 <style>
 body{margin:0;background:#111;color:#fff;font-family:sans-serif;}
-.tabbar{
- position:fixed;bottom:0;width:100%;
- display:flex;background:#222;
-}
-.tabbar button{
- flex:1;padding:12px;border:none;background:#222;color:#fff;
-}
-.active{background:#ff9800;}
+.tabbar{position:fixed;bottom:0;width:100%;display:flex;background:#222;}
+.tabbar button{flex:1;padding:12px;border:none;background:#222;color:#fff;}
 .screen{display:none;padding:10px;padding-bottom:70px;}
 .card{background:#222;padding:12px;border-radius:10px;margin:8px 0;}
 textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
-.warn{background:#b71c1c;padding:10px;border-radius:10px;}
+.warn{background:#b71c1c;padding:10px;border-radius:10px;margin-top:10px;}
+.safe{background:#1b5e20;padding:10px;border-radius:10px;margin-top:10px;}
 </style>
 </head>
 
@@ -34,8 +29,6 @@ textarea,input,select{width:100%;border-radius:8px;margin-top:5px;}
 <button onclick="go('coach')">伴走AI</button>
 <button onclick="go('diary')">日記</button>
 </div>
-
-<div class="card" id="recent"></div>
 </div>
 
 <!-- 相談 -->
@@ -128,15 +121,40 @@ function saveLog(type,text,mood=null){
  drawChart();
 }
 
-// 危険検知（強化）
+// 危険検知
 function danger(text){
  return ["死","消えたい","暴力","殴","怖い"].some(w=>text.includes(w));
 }
 
-// 相手モード
+// 🔥 リスク分析
+function analyzeRisk(text){
+ let risks=[];
+ if(text.length>120) risks.push("長すぎる");
+ if(text.includes("なんで")) risks.push("責め口調");
+ if(text.includes("絶対")||text.includes("普通")) risks.push("決めつけ");
+ if(text.includes("もういい")) risks.push("関係悪化ワード");
+ if(text.includes("無理")) risks.push("拒絶強め");
+ return risks;
+}
+
+// 🔥 スコア
+function riskScore(text){
+ let score=0;
+ if(text.includes("なんで")) score+=2;
+ if(text.includes("絶対")) score+=2;
+ if(text.length>120) score+=1;
+ return score;
+}
+
+// 相手モード（強化）
 function targetMode(){
  let t=document.getElementById("target").value;
- return `相手:${t} 配慮して返信`;
+
+ if(t==="父") return "父：プライド高い。否定NG。短文";
+ if(t==="母") return "母：共感重視";
+ if(t==="配偶者") return "配偶者：責めNG";
+ if(t==="子ども") return "子ども：やさしく";
+ return "";
 }
 
 // AI
@@ -182,14 +200,20 @@ async function analyze(){
  saveLog("相談",text);
 }
 
-// チェック
+// 🔥 チェック（強化）
 async function check(){
  let text=input.value;
- let res=await callAI("送信リスクチェック:"+context(text));
- result.textContent=res;
+ let risks=analyzeRisk(text);
+
+ if(risks.length>0){
+  result.innerHTML="⚠ 修正ポイント<br>"+risks.slice(0,3).join("<br>");
+  return;
+ }
+
+ result.innerHTML="<div class='safe'>問題なし</div>";
 }
 
-// 返信
+// 🔥 返信（安全制御あり）
 async function reply(){
  let text=input.value;
 
@@ -198,13 +222,25 @@ async function reply(){
   return;
  }
 
- let res=await callAI("返信3案:"+context(text));
+ if(riskScore(text)>=3){
+  warn.innerHTML="<div class='warn'>⚠ 今は送信しない方が安全</div>";
+  return;
+ }
+
+ let res=await callAI(`
+返信3案:
+・やさしい
+・距離とる
+・事務的
+${context(text)}
+`);
+
  result.textContent=res;
 }
 
 // 伴走
 async function coach(){
- let res=await callAI("長期伴走アドバイス:"+getLogs().map(l=>l.text).join("\n"));
+ let res=await callAI("長期伴走:"+getLogs().map(l=>l.text).join("\n"));
  coachResult.textContent=res;
 }
 
@@ -212,7 +248,6 @@ async function coach(){
 function saveDiary(){
  let text=diaryText.value;
  let mood=parseInt(mood.value);
-
  saveLog("日記",text,mood);
  diaryText.value="";
 }
@@ -223,7 +258,7 @@ function drawChart(){
 
  if(chart)chart.destroy();
 
- chart=new Chart(chartCanvas,{
+ chart=new Chart(document.getElementById("chart"),{
   type:"line",
   data:{
    labels:logs.map(l=>new Date(l.date).toLocaleDateString()),
